@@ -6,11 +6,15 @@
 #include "proc.h"
 #include "defs.h"
 
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
+struct channel channel[NUMOFCHANS];
 
 struct proc *initproc;
+
+struct spinlock chans_array_lock;
 
 int nextpid = 1;
 struct spinlock pid_lock;
@@ -681,3 +685,142 @@ procdump(void)
     printf("\n");
   }
 }
+
+
+
+// initialize a channel global array.
+void
+init_channel_array(void)
+{
+  struct channel *p;
+  initlock(&chans_array_lock, "channels array lock");
+  
+  for(p = channel; p< &channel[NUMOFCHANS]; p++)
+  {
+    initlock(&p->lock, "chanlock");
+    p->pid =-1;
+    p->busy =0;
+    p->data =0;
+    p->ref_counter = 0;
+    p->state =DEAD;
+  }
+}
+
+//creates a new channel 
+int
+channel_create(void)
+{
+  struct channel *p;
+  int cd =0;
+  int failed = -1;
+  
+  for(p = channel; p< &channel[NUMOFCHANS]; p++)
+  {
+    acquire(&p->lock);
+    if(p->state == DEAD){
+            p->pid =myproc()->pid;
+      p->state =ALIVE;
+      release(&p->lock);
+      return cd;
+    }
+    else{
+      release(&p->lock);
+      cd++;
+    }
+  }
+  return failed;
+}
+
+
+
+int
+channel_put(int cd, int data)
+{
+  if(cd >= NUMOFCHANS || cd<0 )//channel is not in the array range, bad!
+    return -1; 
+  
+  // channel desc ok, start creating!
+  struct channel *p = &channel[cd];
+  acquire(&p->lock);
+  if(p->state != DEAD){
+    while(p->busy == 1)
+    {
+      sleep(p->channel_put, &p->lock);
+      if(p->state == DEAD){
+        release(&p->lock);
+        return -1;
+      }
+    }
+    p->data = data;
+    p->busy =1;
+    release(&p->lock);
+    wakeup(p->channel_take);
+    return 0; //finish and return sucsess
+  }
+
+  // chan is dead therfore return -1
+  release(&p->lock);
+  return -1;
+}
+
+
+int
+channel_take(int cd, int* data)
+{
+  if(cd >= NUMOFCHANS || cd < 0)//channel is not in the array range, bad!
+    return -1;
+  
+  // channel desc ok, start creating!
+  struct channel *p = &channel[cd];
+  acquire(&p->lock);
+  if(p->state != DEAD)
+  {
+    while(p->busy == 0)
+    {
+      sleep(p->channel_take, &p->lock);
+      if(p->state == DEAD){
+        release(&p->lock);
+        return -1;
+      }
+    }
+
+    if(copyout(myproc()->pagetable, (uint64)data, (char *)&p->data, sizeof(int)) == -1)
+    {
+      release(&p->lock);
+      return -1;
+  }
+
+    p->busy =0;
+    release(&p->lock);
+    wakeup(p->channel_put);
+    return 0;
+  }
+
+  // chan is dead, reales lock and return fail
+  release(&p->lock);
+  return -1;
+}
+
+int
+channel_destroy(int cd)
+{
+  if(cd >= NUMOFCHANS || cd < 0) //channel is not in the array range, bad! return error
+    return -1; 
+  
+  struct channel *p = &channel[cd];
+  acquire(&p->lock);
+  if(p->state == DEAD){ // error, relaese lock and exit
+    release(&p->lock);
+    return -1;
+  }
+
+    p->busy =0;
+    p->pid =-1;
+    p->state=DEAD;
+    release(&p->lock);
+    wakeup(p->channel_put);
+    wakeup(p->channel_take);
+    return 0;
+}
+
+

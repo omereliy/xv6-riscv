@@ -105,3 +105,16 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 };
+
+enum chan_state {DEAD, ALIVE};
+struct channel
+{
+  int data;
+  int pid;
+  enum chan_state state;
+  int busy;
+  struct spinlock lock;
+  int ref_counter;
+  void *channel_take;  
+  void *channel_put;
+};
