@@ -707,96 +707,104 @@ init_channel_array(void)
 }
 
 //creates a new channel 
-int
-channel_create(void)
+int channel_create(void)
 {
   struct channel *p;
-  int cd =0;
+  int cd = 0;
   int failed = -1;
-  
-  for(p = channel; p< &channel[NUMOFCHANS]; p++)
+
+  acquire(&chans_array_lock);
+  for (p = channel; p < &channel[NUMOFCHANS]; p++)
   {
     acquire(&p->lock);
-    if(p->state == DEAD){
-            p->pid =myproc()->pid;
-      p->state =ALIVE;
+    if (p->state == DEAD)
+    {
+      p->pid = myproc()->pid;
+      p->state = ALIVE;
+      p->ref_counter = 1;  // Initialize reference counter
       release(&p->lock);
+      release(&chans_array_lock);
       return cd;
     }
-    else{
+    else
+    {
       release(&p->lock);
       cd++;
     }
   }
+  release(&chans_array_lock);
   return failed;
 }
 
 
 
-int
-channel_put(int cd, int data)
+int channel_put(int cd, int data)
 {
-  if(cd >= NUMOFCHANS || cd<0 )//channel is not in the array range, bad!
-    return -1; 
-  
+  if (cd >= NUMOFCHANS || cd < 0) // channel is not in the array range, bad!
+    return -1;
+
   // channel desc ok, start creating!
   struct channel *p = &channel[cd];
   acquire(&p->lock);
-  if(p->state != DEAD){
-    while(p->busy == 1)
+  if (p->state != DEAD)
+  {
+    while (p->busy == 1)
     {
       sleep(p->chan_put, &p->lock);
-      if(p->state == DEAD){
+      if (p->state == DEAD)
+      {
         release(&p->lock);
         return -1;
       }
     }
     p->data = data;
-    p->busy =1;
+    p->busy = 1;
+    p->ref_counter++;  // Increment reference counter
     release(&p->lock);
     wakeup(p->chan_take);
-    return 0; //finish and return sucsess
+    return 0; // finish and return success
   }
 
-  // chan is dead therfore return -1
+  // chan is dead therefore return -1
   release(&p->lock);
   return -1;
 }
 
 
-int
-channel_take(int cd, int* data)
+int channel_take(int cd, int *data)
 {
-  if(cd >= NUMOFCHANS || cd < 0)//channel is not in the array range, bad!
+  if (cd >= NUMOFCHANS || cd < 0) // channel is not in the array range, bad!
     return -1;
-  
+
   // channel desc ok, start creating!
   struct channel *p = &channel[cd];
   acquire(&p->lock);
-  if(p->state != DEAD)
+  if (p->state != DEAD)
   {
-    while(p->busy == 0)
+    while (p->busy == 0)
     {
       sleep(p->chan_take, &p->lock);
-      if(p->state == DEAD){
+      if (p->state == DEAD)
+      {
         release(&p->lock);
         return -1;
       }
     }
 
-    if(copyout(myproc()->pagetable, (uint64)data, (char *)&p->data, sizeof(int)) == -1)
+    if (copyout(myproc()->pagetable, (uint64)data, (char *)&p->data, sizeof(int)) == -1)
     {
       release(&p->lock);
       return -1;
-  }
+    }
 
-    p->busy =0;
+    p->busy = 0;
+    p->ref_counter--;  // Decrement reference counter
     release(&p->lock);
     wakeup(p->chan_put);
     return 0;
   }
 
-  // chan is dead, reales lock and return fail
+  // chan is dead, release lock and return fail
   release(&p->lock);
   return -1;
 }
