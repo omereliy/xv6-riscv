@@ -16,9 +16,9 @@ main(int argc, char* argv[]){
             exit(1);
         }
         if (channel_put(cd, 43) < 0)
-            printf("error\n");
+            printf("error put\n");
         if (channel_destroy(cd) < 0)
-            printf("error\n");
+            printf("error destroy\n");
     } else {
         int data;
         if (channel_take(cd, &data) < 0) { 
@@ -26,7 +26,7 @@ main(int argc, char* argv[]){
             exit(1);
         }
         if (channel_take(cd, &data) < 0)
-            printf("error\n"); 
+            printf("error take\n"); 
         if (channel_take(cd, &data) < 0)
             printf("ok\n");
     }

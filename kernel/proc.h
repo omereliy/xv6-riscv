@@ -115,6 +115,6 @@ struct channel
   int busy;
   struct spinlock lock;
   int ref_counter;
-  void *channel_take;  
-  void *channel_put;
+  void *chan_take;  
+  void *chan_put;
 };

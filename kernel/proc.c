@@ -745,7 +745,7 @@ channel_put(int cd, int data)
   if(p->state != DEAD){
     while(p->busy == 1)
     {
-      sleep(p->channel_put, &p->lock);
+      sleep(p->chan_put, &p->lock);
       if(p->state == DEAD){
         release(&p->lock);
         return -1;
@@ -754,7 +754,7 @@ channel_put(int cd, int data)
     p->data = data;
     p->busy =1;
     release(&p->lock);
-    wakeup(p->channel_take);
+    wakeup(p->chan_take);
     return 0; //finish and return sucsess
   }
 
@@ -777,7 +777,7 @@ channel_take(int cd, int* data)
   {
     while(p->busy == 0)
     {
-      sleep(p->channel_take, &p->lock);
+      sleep(p->chan_take, &p->lock);
       if(p->state == DEAD){
         release(&p->lock);
         return -1;
@@ -792,7 +792,7 @@ channel_take(int cd, int* data)
 
     p->busy =0;
     release(&p->lock);
-    wakeup(p->channel_put);
+    wakeup(p->chan_put);
     return 0;
   }
 
@@ -818,8 +818,8 @@ channel_destroy(int cd)
     p->pid =-1;
     p->state=DEAD;
     release(&p->lock);
-    wakeup(p->channel_put);
-    wakeup(p->channel_take);
+    wakeup(p->chan_put);
+    wakeup(p->chan_take);
     return 0;
 }
 
